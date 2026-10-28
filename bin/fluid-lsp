@@ -1,0 +1,39 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use RinyVT\FluidLsp\Server\LanguageServer;
+use RinyVT\FluidLsp\Server\Transport;
+use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
+use TYPO3\CMS\Core\Core\Bootstrap;
+use TYPO3\CMS\Core\Core\SystemEnvironmentBuilder;
+use TYPO3\CMS\Fluid\Core\ViewHelper\ViewHelperResolverFactoryInterface;
+
+// stdout carries the protocol; a stray notice there breaks the client.
+ini_set('display_errors', 'stderr');
+// Host PHP is often newer than the project's, and TYPO3 turns deprecations into exceptions.
+error_reporting(E_ALL & ~E_DEPRECATED & ~E_USER_DEPRECATED);
+
+$projectPath = realpath($argv[1] ?? (string)getcwd());
+if ($projectPath === false || !is_file($projectPath . '/vendor/autoload.php')) {
+    fwrite(STDERR, "Usage: fluid-lsp <typo3-project-path>\n");
+    exit(1);
+}
+
+// Only our own classes: this repo's vendor/ would clash with the project's TYPO3.
+spl_autoload_register(static function (string $className): void {
+    $prefix = 'RinyVT\\FluidLsp\\';
+    if (str_starts_with($className, $prefix)) {
+        require __DIR__ . '/../Classes/' . str_replace('\\', '/', substr($className, strlen($prefix))) . '.php';
+    }
+});
+
+chdir($projectPath);
+$classLoader = require $projectPath . '/vendor/autoload.php';
+SystemEnvironmentBuilder::run(1, SystemEnvironmentBuilder::REQUESTTYPE_CLI);
+// Not failsafe like the CLI: extensions register Fluid namespaces in ext_localconf.php.
+$container = Bootstrap::init($classLoader);
+$resolver = $container->get(ViewHelperResolverFactoryInterface::class)->create();
+
+exit((new LanguageServer(new Transport(), new ViewHelperRegistry($classLoader, $resolver)))->run());
