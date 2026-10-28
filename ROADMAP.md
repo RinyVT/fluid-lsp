@@ -65,4 +65,3 @@ The proposal also lists:
 
 - Add Rector (MaxServ standard sets), skipping `DisallowedEmptyRuleFixerRector`.
 - Unit tests for `LanguageServer` request handling. The smoke test covers it end to end now.
-- `git init` and a first commit.
