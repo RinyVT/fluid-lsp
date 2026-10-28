@@ -10,6 +10,7 @@ use RinyVT\FluidLsp\Document\ContextKind;
 use RinyVT\FluidLsp\Document\CursorContext;
 use RinyVT\FluidLsp\Document\ParserChecker;
 use RinyVT\FluidLsp\Document\TemplateChecker;
+use RinyVT\FluidLsp\Document\TemplateFiles;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
 use Throwable;
 use TYPO3Fluid\Fluid\Core\ViewHelper\ArgumentDefinition;
@@ -18,6 +19,8 @@ final class LanguageServer
 {
     private const COMPLETION_KIND_FUNCTION = 3;
     private const COMPLETION_KIND_PROPERTY = 10;
+    private const COMPLETION_KIND_FILE = 17;
+    private const COMPLETION_KIND_REFERENCE = 18;
     private const INSERT_FORMAT_SNIPPET = 2;
     private const SEVERITY_ERROR = 1;
     private const METHOD_NOT_FOUND = -32601;
@@ -124,7 +127,7 @@ final class LanguageServer
                 'positionEncoding' => $this->hasUtf8Positions ? 'utf-8' : 'utf-16',
                 'textDocumentSync' => 1,
                 'completionProvider' => [
-                    'triggerCharacters' => ['<', ':', '.', ' ', '(', ','],
+                    'triggerCharacters' => ['<', ':', '.', ' ', '(', ',', '"', '\'', '/'],
                     'resolveProvider' => true,
                 ],
                 'hoverProvider' => true,
@@ -163,19 +166,26 @@ final class LanguageServer
     {
         $text = $this->documents[$params['textDocument']['uri']] ?? '';
         $position = $params['position'];
-        $context = CursorContext::at(substr($text, 0, $this->offset($text, $position)));
+        $offset = $this->offset($text, $position);
+        $context = CursorContext::at(substr($text, 0, $offset));
         if ($context === null) {
             return [];
         }
 
-        // Partials are plain ASCII identifiers, so bytes equal characters in every encoding.
-        $range = [
-            'start' => ['line' => $position['line'], 'character' => $position['character'] - strlen($context->partial)],
-            'end' => $position,
-        ];
-        $viewHelpers = $this->registry->all($this->registry->namespacesFor($text));
-
+        $range = ['start' => $this->position($text, $offset - strlen($context->partial)), 'end' => $position];
         $items = [];
+        if ($context->kind === ContextKind::ArgumentValue) {
+            foreach (array_keys($this->valueTargets($params['textDocument']['uri'], $text, $context)) as $name) {
+                $items[] = [
+                    'label' => (string)$name,
+                    'kind' => $context->argument === 'section' ? self::COMPLETION_KIND_REFERENCE : self::COMPLETION_KIND_FILE,
+                    'textEdit' => ['range' => $range, 'newText' => (string)$name],
+                ];
+            }
+            return $items;
+        }
+
+        $viewHelpers = $this->registry->all($this->registry->namespacesFor($text));
         if ($context->kind === ContextKind::TagName || $context->kind === ContextKind::InlineName) {
             foreach ($viewHelpers as $name => $className) {
                 $items[] = [
@@ -260,15 +270,68 @@ final class LanguageServer
      */
     private function definition(array $params): ?array
     {
+        $text = $this->documents[$params['textDocument']['uri']] ?? '';
+        $offset = $this->offset($text, $params['position']);
+        $context = CursorContext::at(substr($text, 0, $offset));
+        if ($context?->kind === ContextKind::ArgumentValue) {
+            preg_match('/^[^"\'\\\\]*/', substr($text, $offset), $rest);
+            $target = $this->valueTargets($params['textDocument']['uri'], $text, $context)[$context->partial . $rest[0]] ?? null;
+
+            return $target === null ? null : self::location(...$target);
+        }
+
         $target = $this->targetAt($params);
         if ($target === null) {
             return null;
         }
         $class = new ReflectionClass($target[1]);
-        $line = max(0, (int)$class->getStartLine() - 1);
 
+        return self::location(self::uriOf((string)$class->getFileName()), max(0, (int)$class->getStartLine() - 1));
+    }
+
+    /**
+     * The partials, layouts or sections an argument value can name.
+     *
+     * @return array<string, array{string, int}> name => [uri, line]
+     */
+    private function valueTargets(string $uri, string $text, CursorContext $context): array
+    {
+        $path = str_starts_with($uri, 'file://') ? rawurldecode(substr($uri, 7)) : '';
+        if ($context->viewHelper === 'f:render' && $context->argument === 'section') {
+            $partial = $context->argumentValues['partial'] ?? null;
+            if ($partial !== null) {
+                $file = TemplateFiles::partialsFor($path)[$partial] ?? null;
+                if ($file === null) {
+                    return [];
+                }
+                $uri = self::uriOf($file);
+                $text = (string)file_get_contents($file);
+            }
+
+            return array_map(static fn (int $offset): array => [$uri, substr_count($text, "\n", 0, $offset)], TemplateFiles::sections($text));
+        }
+
+        $files = match ($context->viewHelper . ' ' . $context->argument) {
+            'f:render partial' => TemplateFiles::partialsFor($path),
+            'f:layout name' => TemplateFiles::layoutsFor($path),
+            default => [],
+        };
+
+        return array_map(static fn (string $file): array => [self::uriOf($file), 0], $files);
+    }
+
+    private static function uriOf(string $path): string
+    {
+        return 'file://' . str_replace('%2F', '/', rawurlencode($path));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function location(string $uri, int $line): array
+    {
         return [
-            'uri' => 'file://' . str_replace('%2F', '/', rawurlencode((string)$class->getFileName())),
+            'uri' => $uri,
             'range' => ['start' => ['line' => $line, 'character' => 0], 'end' => ['line' => $line, 'character' => 0]],
         ];
     }
@@ -305,7 +368,7 @@ final class LanguageServer
 
         $context = CursorContext::at(substr($text, 0, $start) . $token);
         $className = $viewHelpers[$context->viewHelper ?? ''] ?? null;
-        if ($className === null || $context->partial !== $token) {
+        if ($className === null || $context->kind === ContextKind::ArgumentValue || $context->partial !== $token) {
             return null;
         }
         $argument = $this->registry->argumentsOf($className)[$token] ?? null;

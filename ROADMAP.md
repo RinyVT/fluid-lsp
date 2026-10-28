@@ -5,14 +5,6 @@ Features and fixes not yet built. Largely based on the community proposal
 
 ## Features
 
-### `f:render`, `f:layout`, `f:section`
-- Complete `partial="…"` with the partials under the configured partial root paths.
-- Complete `section="…"` with the sections in the target partial or the current template.
-- Complete `<f:layout name="…">` with the available layouts.
-- Go to definition on all three.
-- Open question: root paths come from TypoScript or the controller, not from the template. Start with the convention
-  `Resources/Private/{Partials,Layouts}` of the extension that owns the file.
-
 ### `f:translate` and `LLL:`
 - Complete `key="…"` from the extension's `locallang.xlf`, taking `extensionName` into account.
 - Show the translated text on hover.
@@ -50,6 +42,11 @@ The proposal also lists:
   - Fluid's parser stops at the first error and only gives a reliable line, so the whole line is marked.
   - Partials that use a namespace declared only in the calling template get "Unknown Namespace" (e.g. `be:` in v12).
   - The ViewHelper checks skip prefixes with resolver delegates (components).
+- **Partials, sections and layouts:**
+  - Only `Resources/Private/{Partials,Layouts}` of the extension that owns the template. Root paths configured in
+    TypoScript or the controller are unknown.
+  - Section completion only reads the target partial when `partial` comes before `section`.
+  - Only the `f` prefix is recognised.
 - **Cursor scanner (`CursorContext`):**
   - It looks back 4000 bytes at most.
   - Inline arguments break on nested parentheses.

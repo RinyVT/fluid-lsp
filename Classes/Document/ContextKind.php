@@ -10,4 +10,5 @@ enum ContextKind
     case InlineName;
     case TagAttribute;
     case InlineArgument;
+    case ArgumentValue;
 }

@@ -99,6 +99,22 @@ $send('textDocument/didOpen', ['textDocument' => ['uri' => 'file:///tmp/Broken.f
 $send('textDocument/hover', $at(0, 0));
 $check('parser diagnostics', str_starts_with($diagnostics[0]['message'] ?? '', 'Templating tags not properly nested') && $diagnostics[0]['range']['start'] === ['line' => 1, 'character' => 2], $diagnostics);
 
+$pagePath = realpath(__DIR__ . '/../Tests/Fixtures/my_ext/Resources/Private/Templates/Page.html');
+$pageUri = 'file://' . $pagePath;
+$page = explode("\n", (string)file_get_contents($pagePath));
+$send('textDocument/didOpen', ['textDocument' => ['uri' => $pageUri, 'languageId' => 'fluid', 'version' => 1, 'text' => implode("\n", $page)]], false);
+$inPage = static fn (int $line, string $before): array => [
+    'textDocument' => ['uri' => $pageUri],
+    'position' => ['line' => $line, 'character' => strpos($page[$line], $before) + strlen($before)],
+];
+$check('layout completion', $labels($send('textDocument/completion', $inPage(0, 'name="'))) === ['Default']);
+$check('partial completion', $labels($send('textDocument/completion', $inPage(3, 'partial="'))) === ['Card', 'Form/Field']);
+$check('section completion from partial', $labels($send('textDocument/completion', $inPage(3, 'section="'))) === ['Header', 'Body']);
+$location = $send('textDocument/definition', $inPage(3, 'partial="Ca'));
+$check('partial definition', str_ends_with($location['uri'] ?? '', '/Partials/Card.html'), $location);
+$location = $send('textDocument/definition', $inPage(3, 'section="He'));
+$check('section definition', str_ends_with($location['uri'] ?? '', '/Partials/Card.html') && $location['range']['start']['line'] === 0, $location);
+
 $definition = $send('textDocument/definition', $at(3, 45));
 $check('definition of closing tag', str_ends_with($definition['uri'] ?? '', 'Format/DateViewHelper.php') && is_file(urldecode(substr($definition['uri'], 7))), $definition);
 

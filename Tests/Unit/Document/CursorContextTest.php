@@ -65,15 +65,46 @@ final class CursorContextTest extends TestCase
     }
 
     /**
+     * @return array<string, array{string, string, string, string, array<string, string>}>
+     */
+    public static function argumentValues(): array
+    {
+        return [
+            'tag' => ['<f:render partial="Ca', 'f:render', 'partial', 'Ca', []],
+            'tag after values' => ['<f:render partial="Card"\n    section=\'He', 'f:render', 'section', 'He', ['partial' => 'Card']],
+            'inline' => ["{f:render(partial: 'Card', section: 'He", 'f:render', 'section', 'He', ['partial' => 'Card']],
+            'inline in attribute value' => [
+                '<f:if condition="{f:render(partial: \\\'Form/', 'f:render', 'partial', 'Form/', [],
+            ],
+            'empty' => ['<f:layout name="', 'f:layout', 'name', '', []],
+        ];
+    }
+
+    /**
+     * @param array<string, string> $argumentValues
+     */
+    #[DataProvider('argumentValues')]
+    public function testDetectsArgumentValue(string $text, string $viewHelper, string $argument, string $partial, array $argumentValues): void
+    {
+        $context = CursorContext::at($text);
+
+        self::assertNotNull($context);
+        self::assertSame(ContextKind::ArgumentValue, $context->kind);
+        self::assertSame($viewHelper, $context->viewHelper);
+        self::assertSame($argument, $context->argument);
+        self::assertSame($partial, $context->partial);
+        self::assertSame($argumentValues, $context->argumentValues);
+    }
+
+    /**
      * @return array<string, array{string}>
      */
     public static function noContexts(): array
     {
         return [
             'plain text' => ['Hello world'],
-            'inside attribute value' => ['<f:format.date format="d'],
             'after closed tag' => ['<f:format.date format="d">text '],
-            'inline argument value' => ['{f:format.date(date: no'],
+            'quote inside attribute value' => ['<f:if condition="{x} == \'b'],
         ];
     }
 
