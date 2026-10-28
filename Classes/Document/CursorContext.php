@@ -17,7 +17,7 @@ final class CursorContext
      * @param string $partial the identifier or value typed so far, replaced on completion
      * @param list<string> $usedArguments
      * @param string $argument the argument whose value the cursor is in
-     * @param array<string, string> $argumentValues quoted values given before the cursor
+     * @param array<string, string> $argumentValues the other quoted values of the same tag or call
      */
     private function __construct(
         public readonly ContextKind $kind,
@@ -29,13 +29,14 @@ final class CursorContext
     ) {
     }
 
-    public static function at(string $textBeforeCursor): ?self
+    public static function at(string $textBeforeCursor, string $textAfterCursor = ''): ?self
     {
         $text = substr($textBeforeCursor, -self::LOOKBEHIND);
+        $after = substr($textAfterCursor, 0, self::LOOKBEHIND);
 
         return self::tagAttribute($text)
-            ?? self::tagAttributeValue($text)
-            ?? self::inlineArgumentValue($text)
+            ?? self::tagAttributeValue($text, $after)
+            ?? self::inlineArgumentValue($text, $after)
             ?? self::inlineArgument($text)
             ?? self::name($text, '/<\/?([\w:.]*)$/', ContextKind::TagName)
             ?? self::name($text, '/(?:\{|->)\s*([\w:.]*)$/', ContextKind::InlineName);
@@ -60,7 +61,7 @@ final class CursorContext
         return new self(ContextKind::TagAttribute, $partial[1], $viewHelper, $used[1]);
     }
 
-    private static function tagAttributeValue(string $text): ?self
+    private static function tagAttributeValue(string $text, string $after): ?self
     {
         if (preg_match_all('/<(\w+:[\w.]+)/', $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
             return null;
@@ -70,19 +71,22 @@ final class CursorContext
         if (preg_match('/^((?:[^>"\']|"[^"]*"|\'[^\']*\')*\s)([\w:.-]+)\s*=\s*["\']([^"\'{]*)$/', $rest, $value) !== 1) {
             return null;
         }
-        preg_match_all('/([\w:.-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/', $value[1], $arguments, PREG_SET_ORDER);
+        // The rest of this value, then the rest of the tag.
+        preg_match('/^[^"\'<>]*["\']?((?:[^<>"\']|"[^"]*"|\'[^\']*\')*)/', $after, $following);
+        preg_match_all('/([\w:.-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/', $value[1] . ' ' . $following[1], $arguments, PREG_SET_ORDER);
 
         return self::argumentValue($viewHelper, $value[2], $value[3], $arguments);
     }
 
-    private static function inlineArgumentValue(string $text): ?self
+    private static function inlineArgumentValue(string $text, string $after): ?self
     {
         // Backslashes: inline syntax inside an attribute value escapes its quotes.
         $pattern = '/(\w+:[\w.]+)\(((?:[^()]*,)?)\s*(\w+)\s*:\s*\\\\*["\']([^"\'{\\\\]*)$/';
         if (preg_match($pattern, $text, $value) !== 1) {
             return null;
         }
-        preg_match_all('/(\w+)\s*:\s*\\\\*(?:"([^"\\\\]*)|\'([^\'\\\\]*))/', $value[2], $arguments, PREG_SET_ORDER);
+        preg_match('/^[^"\'\\\\]*\\\\*["\']?([^()]*)/', $after, $following);
+        preg_match_all('/(\w+)\s*:\s*\\\\*(?:"([^"\\\\]*)|\'([^\'\\\\]*))/', $value[2] . ', ' . $following[1], $arguments, PREG_SET_ORDER);
 
         return self::argumentValue($value[1], $value[3], $value[4], $arguments);
     }

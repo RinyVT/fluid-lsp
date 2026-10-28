@@ -115,6 +115,26 @@ $check('partial definition', str_ends_with($location['uri'] ?? '', '/Partials/Ca
 $location = $send('textDocument/definition', $inPage(3, 'section="He'));
 $check('section definition', str_ends_with($location['uri'] ?? '', '/Partials/Card.html') && $location['range']['start']['line'] === 0, $location);
 
+$check('translate key completion', $labels($send('textDocument/completion', $inPage(5, 'key="'))) === ['card.title', 'card.more']);
+$hover = $send('textDocument/hover', $inPage(5, 'key="card'));
+$check('translate key hover', ($hover['contents']['value'] ?? '') === 'Card title', $hover);
+$location = $send('textDocument/definition', $inPage(5, 'key="card'));
+$check('translate key definition', str_ends_with($location['uri'] ?? '', 'my_ext/Resources/Private/Language/locallang.xlf') && $location['range']['start']['line'] === 4, $location);
+$check('LLL key completion', in_array('clearcache.title', $labels($send('textDocument/completion', $inPage(6, 'locallang.xlf:'))), true));
+$hover = $send('textDocument/hover', $inPage(6, 'clearcache.ti'));
+$check('LLL hover', ($hover['contents']['value'] ?? '') === 'Page cache', $hover);
+$location = $send('textDocument/definition', $inPage(6, 'clearcache.ti'));
+$check('LLL definition', str_ends_with($location['uri'] ?? '', 'cms-backend/Resources/Private/Language/locallang.xlf'), $location);
+$changed = "<f:translate key=\"clearcache.title\" extensionName=\"Backend\" />\n{f:translate(key: 'LLL:backend.messages:clearcache.title')}";
+$send('textDocument/didChange', ['textDocument' => ['uri' => $pageUri, 'version' => 2], 'contentChanges' => [['text' => $changed]]], false);
+$hoverAt = static fn (int $line, int $character): mixed => $send('textDocument/hover', ['textDocument' => ['uri' => $pageUri], 'position' => ['line' => $line, 'character' => $character]]);
+$hover = $hoverAt(0, 22);
+$check('translate extensionName hover', ($hover['contents']['value'] ?? '') === 'Page cache', $hover);
+if (is_file($projectDirectory . '/vendor/typo3/cms-core/Classes/Localization/TranslationDomainMapper.php')) {
+    $hover = $hoverAt(1, 45);
+    $check('LLL domain hover (v14)', ($hover['contents']['value'] ?? '') === 'Page cache', $hover);
+}
+
 $definition = $send('textDocument/definition', $at(3, 45));
 $check('definition of closing tag', str_ends_with($definition['uri'] ?? '', 'Format/DateViewHelper.php') && is_file(urldecode(substr($definition['uri'], 7))), $definition);
 

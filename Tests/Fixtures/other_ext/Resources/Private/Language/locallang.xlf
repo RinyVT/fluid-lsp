@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+	<file source-language="en" datatype="plaintext" original="EXT:other_ext/Resources/Private/Language/locallang.xlf">
+		<body>
+			<trans-unit id="other.label" resname="other.label">
+				<source>From the other extension</source>
+			</trans-unit>
+		</body>
+	</file>
+</xliff>

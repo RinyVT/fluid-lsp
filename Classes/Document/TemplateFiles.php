@@ -32,6 +32,16 @@ final class TemplateFiles
     }
 
     /**
+     * The directory holding `Resources/Private`.
+     */
+    public static function extensionDirectoryOf(string $templatePath): ?string
+    {
+        $position = strrpos($templatePath, '/Resources/Private/');
+
+        return $position === false ? null : substr($templatePath, 0, $position);
+    }
+
+    /**
      * @return array<string, int> name => byte offset
      */
     public static function sections(string $template): array
@@ -46,9 +56,9 @@ final class TemplateFiles
      */
     private static function in(string $templatePath, string $type): array
     {
-        $position = strrpos($templatePath, '/Resources/Private/');
-        $directory = $position === false ? '' : substr($templatePath, 0, $position) . '/Resources/Private/' . $type;
-        if (!is_dir($directory)) {
+        $extensionDirectory = self::extensionDirectoryOf($templatePath);
+        $directory = $extensionDirectory . '/Resources/Private/' . $type;
+        if ($extensionDirectory === null || !is_dir($directory)) {
             return [];
         }
 

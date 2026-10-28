@@ -65,7 +65,7 @@ final class CursorContextTest extends TestCase
     }
 
     /**
-     * @return array<string, array{string, string, string, string, array<string, string>}>
+     * @return array<string, array{string|array{string, string}, string, string, string, array<string, string>}>
      */
     public static function argumentValues(): array
     {
@@ -77,16 +77,25 @@ final class CursorContextTest extends TestCase
                 '<f:if condition="{f:render(partial: \\\'Form/', 'f:render', 'partial', 'Form/', [],
             ],
             'empty' => ['<f:layout name="', 'f:layout', 'name', '', []],
+            'values after the cursor' => [
+                ['<f:translate key="ca', 'rd" extensionName="MyExt" />'],
+                'f:translate', 'key', 'ca', ['extensionName' => 'MyExt'],
+            ],
+            'inline values after the cursor' => [
+                ["{f:render(section: 'He", "ader', partial: 'Card')}"],
+                'f:render', 'section', 'He', ['partial' => 'Card'],
+            ],
         ];
     }
 
     /**
      * @param array<string, string> $argumentValues
+     * @param string|array{string, string} $text before the cursor, or before and after it
      */
     #[DataProvider('argumentValues')]
-    public function testDetectsArgumentValue(string $text, string $viewHelper, string $argument, string $partial, array $argumentValues): void
+    public function testDetectsArgumentValue(string|array $text, string $viewHelper, string $argument, string $partial, array $argumentValues): void
     {
-        $context = CursorContext::at($text);
+        $context = CursorContext::at(...(array)$text);
 
         self::assertNotNull($context);
         self::assertSame(ContextKind::ArgumentValue, $context->kind);

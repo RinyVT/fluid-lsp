@@ -11,12 +11,14 @@ use RinyVT\FluidLsp\Document\CursorContext;
 use RinyVT\FluidLsp\Document\ParserChecker;
 use RinyVT\FluidLsp\Document\TemplateChecker;
 use RinyVT\FluidLsp\Document\TemplateFiles;
+use RinyVT\FluidLsp\Document\Translations;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
 use Throwable;
 use TYPO3Fluid\Fluid\Core\ViewHelper\ArgumentDefinition;
 
 final class LanguageServer
 {
+    private const COMPLETION_KIND_TEXT = 1;
     private const COMPLETION_KIND_FUNCTION = 3;
     private const COMPLETION_KIND_PROPERTY = 10;
     private const COMPLETION_KIND_FILE = 17;
@@ -25,6 +27,8 @@ final class LanguageServer
     private const SEVERITY_ERROR = 1;
     private const METHOD_NOT_FOUND = -32601;
     private const INTERNAL_ERROR = -32603;
+    // `EXT:ext/path.xlf` or a translation domain (TYPO3 14), as in `LLL:<file>:<key>`.
+    private const LLL_FILE = '(?:EXT:[^:"\'\s\\\\]+\.xlf|[a-z0-9_.]+)';
 
     /** @var array<string, string> uri => text */
     private array $documents = [];
@@ -38,6 +42,7 @@ final class LanguageServer
         private readonly ViewHelperRegistry $registry,
         private readonly TemplateChecker $checker,
         private readonly ParserChecker $parserChecker,
+        private readonly Translations $translations,
     ) {
     }
 
@@ -164,27 +169,32 @@ final class LanguageServer
      */
     private function completion(array $params): array
     {
-        $text = $this->documents[$params['textDocument']['uri']] ?? '';
+        $uri = $params['textDocument']['uri'];
+        $text = $this->documents[$uri] ?? '';
         $position = $params['position'];
         $offset = $this->offset($text, $position);
-        $context = CursorContext::at(substr($text, 0, $offset));
+        $before = substr($text, 0, $offset);
+        if (preg_match('/LLL:(' . self::LLL_FILE . '):([\w.-]*)$/', $before, $reference) === 1) {
+            $targets = $this->translationTargets($this->translations->fileForReference($reference[1]));
+
+            return $this->valueItems($text, $offset, $reference[2], $targets, self::COMPLETION_KIND_TEXT);
+        }
+        $context = CursorContext::at($before, substr($text, $offset));
         if ($context === null) {
             return [];
+        }
+        if ($context->kind === ContextKind::ArgumentValue) {
+            $kind = match (true) {
+                $context->viewHelper === 'f:translate' => self::COMPLETION_KIND_TEXT,
+                $context->argument === 'section' => self::COMPLETION_KIND_REFERENCE,
+                default => self::COMPLETION_KIND_FILE,
+            };
+
+            return $this->valueItems($text, $offset, $context->partial, $this->valueTargets($uri, $text, $context), $kind);
         }
 
         $range = ['start' => $this->position($text, $offset - strlen($context->partial)), 'end' => $position];
         $items = [];
-        if ($context->kind === ContextKind::ArgumentValue) {
-            foreach (array_keys($this->valueTargets($params['textDocument']['uri'], $text, $context)) as $name) {
-                $items[] = [
-                    'label' => (string)$name,
-                    'kind' => $context->argument === 'section' ? self::COMPLETION_KIND_REFERENCE : self::COMPLETION_KIND_FILE,
-                    'textEdit' => ['range' => $range, 'newText' => (string)$name],
-                ];
-            }
-            return $items;
-        }
-
         $viewHelpers = $this->registry->all($this->registry->namespacesFor($text));
         if ($context->kind === ContextKind::TagName || $context->kind === ContextKind::InlineName) {
             foreach ($viewHelpers as $name => $className) {
@@ -225,6 +235,26 @@ final class LanguageServer
     }
 
     /**
+     * @param array<string, array{string, int, string}> $targets
+     * @return list<array<string, mixed>>
+     */
+    private function valueItems(string $text, int $offset, string $typed, array $targets, int $kind): array
+    {
+        $range = ['start' => $this->position($text, $offset - strlen($typed)), 'end' => $this->position($text, $offset)];
+        $items = [];
+        foreach ($targets as $name => [, , $detail]) {
+            $items[] = [
+                'label' => (string)$name,
+                'kind' => $kind,
+                'detail' => $detail,
+                'textEdit' => ['range' => $range, 'newText' => (string)$name],
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
      * @param array<string, mixed> $item
      * @return array<string, mixed>
      */
@@ -243,6 +273,11 @@ final class LanguageServer
      */
     private function hover(array $params): ?array
     {
+        $label = $this->valueTargetAt($params)[2] ?? '';
+        if ($label !== '') {
+            return ['contents' => ['kind' => 'plaintext', 'value' => $label]];
+        }
+
         $target = $this->targetAt($params);
         if ($target === null) {
             return null;
@@ -270,14 +305,9 @@ final class LanguageServer
      */
     private function definition(array $params): ?array
     {
-        $text = $this->documents[$params['textDocument']['uri']] ?? '';
-        $offset = $this->offset($text, $params['position']);
-        $context = CursorContext::at(substr($text, 0, $offset));
-        if ($context?->kind === ContextKind::ArgumentValue) {
-            preg_match('/^[^"\'\\\\]*/', substr($text, $offset), $rest);
-            $target = $this->valueTargets($params['textDocument']['uri'], $text, $context)[$context->partial . $rest[0]] ?? null;
-
-            return $target === null ? null : self::location(...$target);
+        $valueTarget = $this->valueTargetAt($params);
+        if ($valueTarget !== null) {
+            return self::location($valueTarget[0], $valueTarget[1]);
         }
 
         $target = $this->targetAt($params);
@@ -290,13 +320,44 @@ final class LanguageServer
     }
 
     /**
-     * The partials, layouts or sections an argument value can name.
+     * The translation, partial, layout or section named under the cursor.
      *
-     * @return array<string, array{string, int}> name => [uri, line]
+     * @param array<string, mixed> $params
+     * @return array{string, int, string}|null [uri, line, detail]
+     */
+    private function valueTargetAt(array $params): ?array
+    {
+        $uri = $params['textDocument']['uri'];
+        $text = $this->documents[$uri] ?? '';
+        $offset = $this->offset($text, $params['position']);
+
+        [, $token] = self::tokenAt($text, $offset, '/[\w.:\/-]/');
+        if (preg_match('/^LLL:(' . self::LLL_FILE . '):([\w.-]+)$/', $token, $reference) === 1) {
+            return $this->translationTargets($this->translations->fileForReference($reference[1]))[$reference[2]] ?? null;
+        }
+
+        $context = CursorContext::at(substr($text, 0, $offset), substr($text, $offset));
+        if ($context?->kind !== ContextKind::ArgumentValue) {
+            return null;
+        }
+        preg_match('/^[^"\'\\\\]*/', substr($text, $offset), $rest);
+
+        return $this->valueTargets($uri, $text, $context)[$context->partial . $rest[0]] ?? null;
+    }
+
+    /**
+     * The translations, partials, layouts or sections an argument value can name.
+     *
+     * @return array<string, array{string, int, string}> name => [uri, line, detail]
      */
     private function valueTargets(string $uri, string $text, CursorContext $context): array
     {
         $path = str_starts_with($uri, 'file://') ? rawurldecode(substr($uri, 7)) : '';
+        if ($context->viewHelper === 'f:translate' && in_array($context->argument, ['key', 'id'], true)) {
+            $values = $context->argumentValues;
+
+            return $this->translationTargets($this->translations->fileForKey($path, $values['extensionName'] ?? '', $values['domain'] ?? ''));
+        }
         if ($context->viewHelper === 'f:render' && $context->argument === 'section') {
             $partial = $context->argumentValues['partial'] ?? null;
             if ($partial !== null) {
@@ -308,7 +369,7 @@ final class LanguageServer
                 $text = (string)file_get_contents($file);
             }
 
-            return array_map(static fn (int $offset): array => [$uri, substr_count($text, "\n", 0, $offset)], TemplateFiles::sections($text));
+            return array_map(static fn (int $offset): array => [$uri, substr_count($text, "\n", 0, $offset), ''], TemplateFiles::sections($text));
         }
 
         $files = match ($context->viewHelper . ' ' . $context->argument) {
@@ -317,7 +378,18 @@ final class LanguageServer
             default => [],
         };
 
-        return array_map(static fn (string $file): array => [self::uriOf($file), 0], $files);
+        return array_map(static fn (string $file): array => [self::uriOf($file), 0, ''], $files);
+    }
+
+    /**
+     * @return array<string, array{string, int, string}> id => [uri, line, label]
+     */
+    private function translationTargets(?string $file): array
+    {
+        return array_map(
+            static fn (array $unit): array => [self::uriOf((string)$file), $unit['line'] - 1, $unit['text']],
+            $this->translations->unitsIn($file),
+        );
     }
 
     private static function uriOf(string $path): string
@@ -345,18 +417,9 @@ final class LanguageServer
     private function targetAt(array $params): ?array
     {
         $text = $this->documents[$params['textDocument']['uri']] ?? '';
-        $offset = $this->offset($text, $params['position']);
-
-        $start = $offset;
-        while ($start > 0 && preg_match('/[\w:.-]/', $text[$start - 1]) === 1) {
-            $start--;
-        }
-        $end = $offset;
-        while ($end < strlen($text) && preg_match('/[\w:.-]/', $text[$end]) === 1) {
-            $end++;
-        }
+        [$start, $token] = self::tokenAt($text, $this->offset($text, $params['position']), '/[\w:.-]/');
         // Inline arguments are written `name: value`, so the colon is not part of the name.
-        $token = rtrim(substr($text, $start, $end - $start), ':.');
+        $token = rtrim($token, ':.');
         if ($token === '') {
             return null;
         }
@@ -374,6 +437,23 @@ final class LanguageServer
         $argument = $this->registry->argumentsOf($className)[$token] ?? null;
 
         return $argument === null ? null : [$context->viewHelper, $className, $argument];
+    }
+
+    /**
+     * @return array{int, string} start offset, token
+     */
+    private static function tokenAt(string $text, int $offset, string $characterPattern): array
+    {
+        $start = $offset;
+        while ($start > 0 && preg_match($characterPattern, $text[$start - 1]) === 1) {
+            $start--;
+        }
+        $end = $offset;
+        while ($end < strlen($text) && preg_match($characterPattern, $text[$end]) === 1) {
+            $end++;
+        }
+
+        return [$start, substr($text, $start, $end - $start)];
     }
 
     /**

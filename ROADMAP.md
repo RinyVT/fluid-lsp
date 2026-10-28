@@ -5,12 +5,6 @@ Features and fixes not yet built. Largely based on the community proposal
 
 ## Features
 
-### `f:translate` and `LLL:`
-- Complete `key="…"` from the extension's `locallang.xlf`, taking `extensionName` into account.
-- Show the translated text on hover.
-- Go to definition: jump to the `trans-unit` in the XLF file.
-- Do the same for full `LLL:EXT:…:key` strings.
-
 ### `EXT:` paths
 Complete and follow `EXT:ext_key/Resources/…` paths, for example in `f:uri.resource`, `f:image` and `f:asset.*`.
 
@@ -45,8 +39,12 @@ The proposal also lists:
 - **Partials, sections and layouts:**
   - Only `Resources/Private/{Partials,Layouts}` of the extension that owns the template. Root paths configured in
     TypoScript or the controller are unknown.
-  - Section completion only reads the target partial when `partial` comes before `section`.
   - Only the `f` prefix is recognised.
+- **Translations:**
+  - A short key without `extensionName` or `domain` is looked up in the `locallang.xlf` of the extension that owns
+    the template. Extbase uses the controller's extension, which is usually the same.
+  - Hover shows the source (default language) label.
+  - XLIFF 1.2 (`trans-unit`) only.
 - **Cursor scanner (`CursorContext`):**
   - It looks back 4000 bytes at most.
   - Inline arguments break on nested parentheses.
