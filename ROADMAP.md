@@ -9,8 +9,8 @@ Features and fixes not yet built. Largely based on the community proposal
 Run Fluid's `TemplateParser` on open and change, and publish the errors.
 - Fluid 5 (v14): parser exceptions implement `TemplateLocationException` and carry the line.
 - Fluid 2 and 4 (v12, v13): no position. Take the line from the message where possible, otherwise use line 1.
-- The server can also check on its own, with exact positions: unknown ViewHelpers, unknown arguments and missing
-  required arguments. `ViewHelperRegistry` already has the data.
+- The server's own checks (unknown ViewHelpers, unknown and missing required arguments) are done. They skip prefixes
+  with resolver delegates (components) until those are supported.
 
 ### `f:render`, `f:layout`, `f:section`
 - Complete `partial="…"` with the partials under the configured partial root paths.

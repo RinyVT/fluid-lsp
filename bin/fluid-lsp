@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+use RinyVT\FluidLsp\Document\TemplateChecker;
 use RinyVT\FluidLsp\Server\LanguageServer;
 use RinyVT\FluidLsp\Server\Transport;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
@@ -36,4 +37,6 @@ SystemEnvironmentBuilder::run(1, SystemEnvironmentBuilder::REQUESTTYPE_CLI);
 $container = Bootstrap::init($classLoader);
 $resolver = $container->get(ViewHelperResolverFactoryInterface::class)->create();
 
-exit((new LanguageServer(new Transport(), new ViewHelperRegistry($classLoader, $resolver)))->run());
+$registry = new ViewHelperRegistry($classLoader, $resolver);
+
+exit((new LanguageServer(new Transport(), $registry, new TemplateChecker($registry)))->run());

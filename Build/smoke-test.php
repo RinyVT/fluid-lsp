@@ -15,7 +15,8 @@ $process = proc_open(
 [$stdin, $stdout, $stderr] = $pipes;
 
 $nextId = 1;
-$send = static function (string $method, array $params, bool $isRequest = true) use ($stdin, $stdout, &$nextId): mixed {
+$diagnostics = [];
+$send = static function (string $method, array $params, bool $isRequest = true) use ($stdin, $stdout, &$nextId, &$diagnostics): mixed {
     $message = ['jsonrpc' => '2.0', 'method' => $method, 'params' => $params];
     if ($isRequest) {
         $message['id'] = $nextId++;
@@ -25,13 +26,18 @@ $send = static function (string $method, array $params, bool $isRequest = true) 
     if (!$isRequest) {
         return null;
     }
-    $length = 0;
-    while (($line = fgets($stdout)) !== false && trim($line) !== '') {
-        if (preg_match('/^Content-Length: (\d+)/', $line, $matches) === 1) {
-            $length = (int)$matches[1];
+    do {
+        $length = 0;
+        while (($line = fgets($stdout)) !== false && trim($line) !== '') {
+            if (preg_match('/^Content-Length: (\d+)/', $line, $matches) === 1) {
+                $length = (int)$matches[1];
+            }
         }
-    }
-    $response = json_decode(stream_get_contents($stdout, $length), true, 512, JSON_THROW_ON_ERROR);
+        $response = json_decode(stream_get_contents($stdout, $length), true, 512, JSON_THROW_ON_ERROR);
+        if (($response['method'] ?? '') === 'textDocument/publishDiagnostics') {
+            $diagnostics = $response['params']['diagnostics'];
+        }
+    } while (!isset($response['id']));
     if (isset($response['error'])) {
         throw new RuntimeException($method . ': ' . $response['error']['message']);
     }
@@ -45,6 +51,7 @@ $template = <<<'HTML'
     {f:format.date(da
     <f:format.date format="d.m.Y">{date}</f:format.date>
     {f:translate(key: 'x', extensionName: 'y')}
+    <f:link.page pageUid="1" class="x" data-foo="y">{f:nope()}</f:link.page>
     HTML;
 $uri = 'file:///tmp/Template.fluid.html';
 $at = static fn (int $line, int $character): array => [
@@ -84,6 +91,9 @@ $check('hover on attribute', str_starts_with($hover['contents']['value'] ?? '', 
 
 $hover = $send('textDocument/hover', $at(4, 26));
 $check('hover on inline argument', str_starts_with($hover['contents']['value'] ?? '', '**extensionName**'), $hover);
+
+$messages = array_column($diagnostics, 'message');
+$check('diagnostics', $messages === ['Unknown ViewHelper "f:nope".'] && $diagnostics[0]['range']['start'] === ['line' => 5, 'character' => 49], $diagnostics);
 
 $definition = $send('textDocument/definition', $at(3, 45));
 $check('definition of closing tag', str_ends_with($definition['uri'] ?? '', 'Format/DateViewHelper.php') && is_file(urldecode(substr($definition['uri'], 7))), $definition);

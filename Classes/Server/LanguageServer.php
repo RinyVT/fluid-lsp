@@ -8,6 +8,7 @@ use ReflectionClass;
 use RinyVT\FluidLsp\Exception\MethodNotFound;
 use RinyVT\FluidLsp\Document\ContextKind;
 use RinyVT\FluidLsp\Document\CursorContext;
+use RinyVT\FluidLsp\Document\TemplateChecker;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
 use Throwable;
 use TYPO3Fluid\Fluid\Core\ViewHelper\ArgumentDefinition;
@@ -17,6 +18,7 @@ final class LanguageServer
     private const COMPLETION_KIND_FUNCTION = 3;
     private const COMPLETION_KIND_PROPERTY = 10;
     private const INSERT_FORMAT_SNIPPET = 2;
+    private const SEVERITY_ERROR = 1;
     private const METHOD_NOT_FOUND = -32601;
     private const INTERNAL_ERROR = -32603;
 
@@ -30,6 +32,7 @@ final class LanguageServer
     public function __construct(
         private readonly Transport $transport,
         private readonly ViewHelperRegistry $registry,
+        private readonly TemplateChecker $checker,
     ) {
     }
 
@@ -79,13 +82,16 @@ final class LanguageServer
                 return null;
             case 'textDocument/didOpen':
                 $this->documents[$params['textDocument']['uri']] = $params['textDocument']['text'];
+                $this->publishDiagnostics($params['textDocument']['uri']);
                 return null;
             case 'textDocument/didChange':
                 // Full sync: the last change holds the whole text.
                 $this->documents[$params['textDocument']['uri']] = end($params['contentChanges'])['text'];
+                $this->publishDiagnostics($params['textDocument']['uri']);
                 return null;
             case 'textDocument/didClose':
                 unset($this->documents[$params['textDocument']['uri']]);
+                $this->publishDiagnostics($params['textDocument']['uri']);
                 return null;
             case 'textDocument/completion':
                 return $this->completion($params);
@@ -124,6 +130,24 @@ final class LanguageServer
             ],
             'serverInfo' => ['name' => 'fluid-lsp'],
         ];
+    }
+
+    private function publishDiagnostics(string $uri): void
+    {
+        $text = $this->documents[$uri] ?? '';
+        $diagnostics = [];
+        foreach ($this->checker->problems($text) as $problem) {
+            $diagnostics[] = [
+                'range' => ['start' => $this->position($text, $problem['start']), 'end' => $this->position($text, $problem['end'])],
+                'severity' => self::SEVERITY_ERROR,
+                'source' => 'fluid-lsp',
+                'message' => $problem['message'],
+            ];
+        }
+        $this->transport->send([
+            'method' => 'textDocument/publishDiagnostics',
+            'params' => ['uri' => $uri, 'diagnostics' => $diagnostics],
+        ]);
     }
 
     /**
@@ -307,5 +331,22 @@ final class LanguageServer
         $lineText = substr($text, $lineStart, $lineEnd === false ? null : $lineEnd - $lineStart);
 
         return $lineStart + strlen(mb_substr($lineText, 0, $position['character']));
+    }
+
+    /**
+     * The reverse of offset(), with the same UTF-16 drift.
+     *
+     * @return array{line: int, character: int}
+     */
+    private function position(string $text, int $offset): array
+    {
+        $before = substr($text, 0, $offset);
+        $lineStart = strrpos($before, "\n");
+        $lineText = $lineStart === false ? $before : substr($before, $lineStart + 1);
+
+        return [
+            'line' => substr_count($before, "\n"),
+            'character' => $this->hasUtf8Positions ? strlen($lineText) : mb_strlen($lineText),
+        ];
     }
 }
