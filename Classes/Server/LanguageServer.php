@@ -8,6 +8,7 @@ use ReflectionClass;
 use RinyVT\FluidLsp\Exception\MethodNotFound;
 use RinyVT\FluidLsp\Document\ContextKind;
 use RinyVT\FluidLsp\Document\CursorContext;
+use RinyVT\FluidLsp\Document\ParserChecker;
 use RinyVT\FluidLsp\Document\TemplateChecker;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
 use Throwable;
@@ -33,6 +34,7 @@ final class LanguageServer
         private readonly Transport $transport,
         private readonly ViewHelperRegistry $registry,
         private readonly TemplateChecker $checker,
+        private readonly ParserChecker $parserChecker,
     ) {
     }
 
@@ -135,8 +137,11 @@ final class LanguageServer
     private function publishDiagnostics(string $uri): void
     {
         $text = $this->documents[$uri] ?? '';
+        $problems = $this->checker->problems($text);
+        // Fluid stops at the first ViewHelper problem, and TemplateChecker already reports those with exact ranges.
+        $problems[] = $this->parserChecker->problem($text, $problems === []);
         $diagnostics = [];
-        foreach ($this->checker->problems($text) as $problem) {
+        foreach (array_filter($problems) as $problem) {
             $diagnostics[] = [
                 'range' => ['start' => $this->position($text, $problem['start']), 'end' => $this->position($text, $problem['end'])],
                 'severity' => self::SEVERITY_ERROR,

@@ -5,13 +5,6 @@ Features and fixes not yet built. Largely based on the community proposal
 
 ## Features
 
-### Diagnostics
-Run Fluid's `TemplateParser` on open and change, and publish the errors.
-- Fluid 5 (v14): parser exceptions implement `TemplateLocationException` and carry the line.
-- Fluid 2 and 4 (v12, v13): no position. Take the line from the message where possible, otherwise use line 1.
-- The server's own checks (unknown ViewHelpers, unknown and missing required arguments) are done. They skip prefixes
-  with resolver delegates (components) until those are supported.
-
 ### `f:render`, `f:layout`, `f:section`
 - Complete `partial="…"` with the partials under the configured partial root paths.
 - Complete `section="…"` with the sections in the target partial or the current template.
@@ -53,6 +46,10 @@ The proposal also lists:
 - **Extension repos:** repos with `.Build/vendor` aren't detected. The root detection looks for `vendor/typo3/cms-core`
   only, and such repos usually have no `settings.php`.
 - **Classic (non-composer) installs:** untested.
+- **Diagnostics:**
+  - Fluid's parser stops at the first error and only gives a reliable line, so the whole line is marked.
+  - Partials that use a namespace declared only in the calling template get "Unknown Namespace" (e.g. `be:` in v12).
+  - The ViewHelper checks skip prefixes with resolver delegates (components).
 - **Cursor scanner (`CursorContext`):**
   - It looks back 4000 bytes at most.
   - Inline arguments break on nested parentheses.

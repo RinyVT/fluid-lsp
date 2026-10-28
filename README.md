@@ -5,7 +5,8 @@ Language server for TYPO3 Fluid templates. Supports TYPO3 12.4, 13.4 and 14.
 - Completion: ViewHelper names (tag and inline syntax) and their arguments
 - Hover: ViewHelper and argument documentation
 - Go to definition: the ViewHelper's PHP class
-- Diagnostics: unknown ViewHelpers, unknown arguments and missing required arguments
+- Diagnostics: unknown ViewHelpers, unknown arguments and missing required arguments, plus the first error from
+  Fluid's own parser (unclosed or badly nested tags, unknown namespaces)
 
 Global namespaces, `xmlns:` declarations and `{namespace}` declarations are all picked up.
 

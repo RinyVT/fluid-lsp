@@ -95,6 +95,10 @@ $check('hover on inline argument', str_starts_with($hover['contents']['value'] ?
 $messages = array_column($diagnostics, 'message');
 $check('diagnostics', $messages === ['Unknown ViewHelper "f:nope".'] && $diagnostics[0]['range']['start'] === ['line' => 5, 'character' => 49], $diagnostics);
 
+$send('textDocument/didOpen', ['textDocument' => ['uri' => 'file:///tmp/Broken.fluid.html', 'languageId' => 'fluid', 'version' => 1, 'text' => "<f:if condition=\"1\">\n  </f:for>"]], false);
+$send('textDocument/hover', $at(0, 0));
+$check('parser diagnostics', str_starts_with($diagnostics[0]['message'] ?? '', 'Templating tags not properly nested') && $diagnostics[0]['range']['start'] === ['line' => 1, 'character' => 2], $diagnostics);
+
 $definition = $send('textDocument/definition', $at(3, 45));
 $check('definition of closing tag', str_ends_with($definition['uri'] ?? '', 'Format/DateViewHelper.php') && is_file(urldecode(substr($definition['uri'], 7))), $definition);
 

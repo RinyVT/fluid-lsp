@@ -3,12 +3,14 @@
 
 declare(strict_types=1);
 
+use RinyVT\FluidLsp\Document\ParserChecker;
 use RinyVT\FluidLsp\Document\TemplateChecker;
 use RinyVT\FluidLsp\Server\LanguageServer;
 use RinyVT\FluidLsp\Server\Transport;
 use RinyVT\FluidLsp\ViewHelper\ViewHelperRegistry;
 use TYPO3\CMS\Core\Core\Bootstrap;
 use TYPO3\CMS\Core\Core\SystemEnvironmentBuilder;
+use TYPO3\CMS\Fluid\Core\Rendering\RenderingContextFactory;
 use TYPO3\CMS\Fluid\Core\ViewHelper\ViewHelperResolverFactoryInterface;
 
 // stdout carries the protocol; a stray notice there breaks the client.
@@ -38,5 +40,7 @@ $container = Bootstrap::init($classLoader);
 $resolver = $container->get(ViewHelperResolverFactoryInterface::class)->create();
 
 $registry = new ViewHelperRegistry($classLoader, $resolver);
+$renderingContextFactory = $container->get(RenderingContextFactory::class);
+$parserChecker = new ParserChecker(static fn () => $renderingContextFactory->create());
 
-exit((new LanguageServer(new Transport(), $registry, new TemplateChecker($registry)))->run());
+exit((new LanguageServer(new Transport(), $registry, new TemplateChecker($registry), $parserChecker))->run());
