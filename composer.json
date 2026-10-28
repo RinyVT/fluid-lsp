@@ -1,0 +1,50 @@
+{
+    "name": "rinyvt/fluid-lsp",
+    "description": "Language server for TYPO3 Fluid templates",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": "^8.1"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^2.0",
+        "phpunit/phpunit": "^10.5 || ^11.0",
+        "saschaegerer/phpstan-typo3": "^2.0",
+        "typo3/cms-core": "^12.4 || ^13.4 || ^14.0",
+        "typo3/cms-fluid": "^12.4 || ^13.4 || ^14.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "RinyVT\\FluidLsp\\": "Classes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "RinyVT\\FluidLsp\\Tests\\": "Tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        },
+        "sort-packages": true
+    },
+    "scripts": {
+        "test": "phpunit",
+        "stan": "phpstan analyse",
+        "php-cs-fixer": "php-cs-fixer fix",
+        "fix": [
+            "@php-cs-fixer"
+        ],
+        "ci": [
+            "@stan",
+            "@test",
+            "@php-cs-fixer --dry-run --diff"
+        ]
+    },
+    "bin": [
+        "bin/fluid-lsp"
+    ]
+}

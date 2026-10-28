@@ -1,0 +1,18 @@
+{
+    "name": "rinyvt/fluid-lsp-build-v14",
+    "description": "Throwaway TYPO3 14 instance for smoke-testing fluid-lsp",
+    "require": {
+        "typo3/cms-core": "^14.0",
+        "typo3/cms-fluid": "^14.0",
+        "typo3/cms-install": "^14.0",
+        "typo3/cms-backend": "^14.0",
+        "typo3/cms-frontend": "^14.0",
+        "typo3/cms-extbase": "^14.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        }
+    }
+}
