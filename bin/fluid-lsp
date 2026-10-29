@@ -40,6 +40,9 @@ $classLoader = require $projectPath . '/vendor/autoload.php';
 SystemEnvironmentBuilder::run(1, SystemEnvironmentBuilder::REQUESTTYPE_CLI);
 // Not failsafe like the CLI: extensions register Fluid namespaces in ext_localconf.php.
 $container = Bootstrap::init($classLoader);
+// init() applied the project's displayErrors and an exception handler that echoes to stdout.
+ini_set('display_errors', 'stderr');
+restore_exception_handler();
 $resolver = $container->get(ViewHelperResolverFactoryInterface::class)->create();
 
 $registry = new ViewHelperRegistry($classLoader, $resolver);

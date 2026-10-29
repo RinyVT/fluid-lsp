@@ -31,6 +31,7 @@ final class CursorContextTest extends TestCase
                 'f:for',
                 ['each', 'as'],
             ],
+            'attribute on a new line' => ["<f:for each=\"{items}\" ea\n", ContextKind::TagAttribute, '', 'f:for', ['each']],
             'attribute after value with arrow' => [
                 '<f:if condition="{x -> f:count()} > 1" ',
                 ContextKind::TagAttribute,
@@ -114,6 +115,10 @@ final class CursorContextTest extends TestCase
             'plain text' => ['Hello world'],
             'after closed tag' => ['<f:format.date format="d">text '],
             'quote inside attribute value' => ['<f:if condition="{x} == \'b'],
+            'inline name before a line break' => ["{f:fo\n"],
+            'attribute value before a line break' => ["<f:render partial=\"Ca\n"],
+            'inline argument before a line break' => ["{f:format.date(da\n"],
+            'inline argument value before a line break' => ["{f:render(partial: 'Ca\n"],
         ];
     }
 

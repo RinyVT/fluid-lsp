@@ -42,6 +42,14 @@ final class Transport
         return is_array($message) ? $message : [];
     }
 
+    public function hasPendingInput(): bool
+    {
+        $read = [STDIN];
+        $write = $except = null;
+
+        return stream_select($read, $write, $except, 0) > 0;
+    }
+
     /**
      * @param array<string, mixed> $message
      */

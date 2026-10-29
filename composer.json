@@ -10,7 +10,6 @@
         "friendsofphp/php-cs-fixer": "^3.0",
         "phpstan/phpstan": "^2.0",
         "phpunit/phpunit": "^10.5 || ^11.0",
-        "saschaegerer/phpstan-typo3": "^2.0",
         "typo3/cms-core": "^12.4 || ^13.4 || ^14.0",
         "typo3/cms-fluid": "^12.4 || ^13.4 || ^14.0"
     },

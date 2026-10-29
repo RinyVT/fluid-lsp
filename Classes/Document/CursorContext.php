@@ -34,15 +34,14 @@ final class CursorContext
         $text = substr($textBeforeCursor, -self::LOOKBEHIND);
         $after = substr($textAfterCursor, 0, self::LOOKBEHIND);
 
-        return self::tagAttribute($text)
-            ?? self::tagAttributeValue($text, $after)
+        return self::tag($text, $after)
             ?? self::inlineArgumentValue($text, $after)
             ?? self::inlineArgument($text)
-            ?? self::name($text, '/<\/?([\w:.]*)$/', ContextKind::TagName)
-            ?? self::name($text, '/(?:\{|->)\s*([\w:.]*)$/', ContextKind::InlineName);
+            ?? self::name($text, '/<\/?([\w:.]*)\z/', ContextKind::TagName)
+            ?? self::name($text, '/(?:\{|->)\s*([\w:.]*)\z/', ContextKind::InlineName);
     }
 
-    private static function tagAttribute(string $text): ?self
+    private static function tag(string $text, string $after): ?self
     {
         if (preg_match_all('/<(\w+:[\w.]+)/', $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
             return null;
@@ -50,10 +49,15 @@ final class CursorContext
         [$viewHelper, $offset] = end($matches[1]);
         $rest = substr($text, $offset + strlen($viewHelper));
 
+        return self::tagAttribute($viewHelper, $rest) ?? self::tagAttributeValue($viewHelper, $rest, $after);
+    }
+
+    private static function tagAttribute(string $viewHelper, string $rest): ?self
+    {
         // Quoted values may hold `>` (as in `{x -> f:y()}`), so drop them first;
         // a quote left over means the cursor is inside a value.
         $unquoted = (string)preg_replace('/"[^"]*"|\'[^\']*\'/', '', $rest);
-        if (strpbrk($unquoted, '>"\'') !== false || preg_match('/\s([\w-]*)$/', $unquoted, $partial) !== 1) {
+        if (strpbrk($unquoted, '>"\'') !== false || preg_match('/\s([\w-]*)\z/', $unquoted, $partial) !== 1) {
             return null;
         }
         preg_match_all('/([\w:.-]+)\s*=/', $unquoted, $used);
@@ -61,14 +65,9 @@ final class CursorContext
         return new self(ContextKind::TagAttribute, $partial[1], $viewHelper, $used[1]);
     }
 
-    private static function tagAttributeValue(string $text, string $after): ?self
+    private static function tagAttributeValue(string $viewHelper, string $rest, string $after): ?self
     {
-        if (preg_match_all('/<(\w+:[\w.]+)/', $text, $matches, PREG_OFFSET_CAPTURE) === 0) {
-            return null;
-        }
-        [$viewHelper, $offset] = end($matches[1]);
-        $rest = substr($text, $offset + strlen($viewHelper));
-        if (preg_match('/^((?:[^>"\']|"[^"]*"|\'[^\']*\')*\s)([\w:.-]+)\s*=\s*["\']([^"\'{]*)$/', $rest, $value) !== 1) {
+        if (preg_match('/^((?:[^>"\']|"[^"]*"|\'[^\']*\')*\s)([\w:.-]+)\s*=\s*["\']([^"\'{\n]*)\z/', $rest, $value) !== 1) {
             return null;
         }
         // The rest of this value, then the rest of the tag.
@@ -81,7 +80,7 @@ final class CursorContext
     private static function inlineArgumentValue(string $text, string $after): ?self
     {
         // Backslashes: inline syntax inside an attribute value escapes its quotes.
-        $pattern = '/(\w+:[\w.]+)\(((?:[^()]*,)?)\s*(\w+)\s*:\s*\\\\*["\']([^"\'{\\\\]*)$/';
+        $pattern = '/(\w+:[\w.]+)\(((?:[^()]*,)?)\s*(\w+)\s*:\s*\\\\*["\']([^"\'{\\\\\n]*)\z/';
         if (preg_match($pattern, $text, $value) !== 1) {
             return null;
         }
@@ -106,10 +105,10 @@ final class CursorContext
 
     private static function inlineArgument(string $text): ?self
     {
-        if (preg_match('/(\w+:[\w.]+)\(([^()]*)$/', $text, $matches) !== 1) {
+        if (preg_match('/(\w+:[\w.]+)\(([^()]*)\z/', $text, $matches) !== 1) {
             return null;
         }
-        if (preg_match('/(?:^|,)\s*(\w*)$/', $matches[2], $partial) !== 1) {
+        if (preg_match('/(?:^|,)\s*(\w*)\z/', $matches[2], $partial) !== 1) {
             return null;
         }
         preg_match_all('/(\w+)\s*:/', $matches[2], $used);

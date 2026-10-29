@@ -33,6 +33,9 @@ final class LanguageServer
     /** @var array<string, string> uri => text */
     private array $documents = [];
 
+    /** @var array<string, true> uris whose diagnostics are stale */
+    private array $dirty = [];
+
     private bool $hasUtf8Positions = false;
 
     private bool $isShutdown = false;
@@ -68,10 +71,17 @@ final class LanguageServer
             } catch (Throwable $exception) {
                 if ($id === null) {
                     fwrite(STDERR, $exception . "\n");
-                    continue;
+                } else {
+                    $code = $exception instanceof MethodNotFound ? self::METHOD_NOT_FOUND : self::INTERNAL_ERROR;
+                    $this->transport->send(['id' => $id, 'error' => ['code' => $code, 'message' => $exception->getMessage()]]);
                 }
-                $code = $exception instanceof MethodNotFound ? self::METHOD_NOT_FOUND : self::INTERNAL_ERROR;
-                $this->transport->send(['id' => $id, 'error' => ['code' => $code, 'message' => $exception->getMessage()]]);
+            }
+            // Checking waits for a pause in the input, so a burst of keystrokes is parsed once.
+            if ($this->dirty !== [] && !$this->transport->hasPendingInput()) {
+                foreach (array_keys($this->dirty) as $uri) {
+                    $this->publishDiagnostics($uri);
+                }
+                $this->dirty = [];
             }
         }
 
@@ -92,16 +102,16 @@ final class LanguageServer
                 return null;
             case 'textDocument/didOpen':
                 $this->documents[$params['textDocument']['uri']] = $params['textDocument']['text'];
-                $this->publishDiagnostics($params['textDocument']['uri']);
+                $this->dirty[$params['textDocument']['uri']] = true;
                 return null;
             case 'textDocument/didChange':
                 // Full sync: the last change holds the whole text.
                 $this->documents[$params['textDocument']['uri']] = end($params['contentChanges'])['text'];
-                $this->publishDiagnostics($params['textDocument']['uri']);
+                $this->dirty[$params['textDocument']['uri']] = true;
                 return null;
             case 'textDocument/didClose':
                 unset($this->documents[$params['textDocument']['uri']]);
-                $this->publishDiagnostics($params['textDocument']['uri']);
+                $this->dirty[$params['textDocument']['uri']] = true;
                 return null;
             case 'textDocument/completion':
                 return $this->completion($params);
@@ -174,7 +184,7 @@ final class LanguageServer
         $position = $params['position'];
         $offset = $this->offset($text, $position);
         $before = substr($text, 0, $offset);
-        if (preg_match('/LLL:(' . self::LLL_FILE . '):([\w.-]*)$/', $before, $reference) === 1) {
+        if (preg_match('/LLL:(' . self::LLL_FILE . '):([\w.-]*)\z/', $before, $reference) === 1) {
             $targets = $this->translationTargets($this->translations->fileForReference($reference[1]));
 
             return $this->valueItems($text, $offset, $reference[2], $targets, self::COMPLETION_KIND_TEXT);
@@ -332,7 +342,7 @@ final class LanguageServer
         $offset = $this->offset($text, $params['position']);
 
         [, $token] = self::tokenAt($text, $offset, '/[\w.:\/-]/');
-        if (preg_match('/^LLL:(' . self::LLL_FILE . '):([\w.-]+)$/', $token, $reference) === 1) {
+        if (preg_match('/^LLL:(' . self::LLL_FILE . '):([\w.-]+)\z/', $token, $reference) === 1) {
             return $this->translationTargets($this->translations->fileForReference($reference[1]))[$reference[2]] ?? null;
         }
 
@@ -473,16 +483,16 @@ final class LanguageServer
             return min($lineStart + $position['character'], strlen($text));
         }
 
-        // Counts code points, not UTF-16 units: positions drift by one per emoji
-        // earlier on the line. Clients that offer utf-8 (Neovim does) never get here.
+        // Other clients count UTF-16 code units: two per emoji.
         $lineEnd = strpos($text, "\n", $lineStart);
         $lineText = substr($text, $lineStart, $lineEnd === false ? null : $lineEnd - $lineStart);
+        $units = substr(mb_convert_encoding($lineText, 'UTF-16LE', 'UTF-8'), 0, 2 * $position['character']);
 
-        return $lineStart + strlen(mb_substr($lineText, 0, $position['character']));
+        return $lineStart + strlen(mb_convert_encoding($units, 'UTF-8', 'UTF-16LE'));
     }
 
     /**
-     * The reverse of offset(), with the same UTF-16 drift.
+     * The reverse of offset().
      *
      * @return array{line: int, character: int}
      */
@@ -494,7 +504,7 @@ final class LanguageServer
 
         return [
             'line' => substr_count($before, "\n"),
-            'character' => $this->hasUtf8Positions ? strlen($lineText) : mb_strlen($lineText),
+            'character' => $this->hasUtf8Positions ? strlen($lineText) : intdiv(strlen(mb_convert_encoding($lineText, 'UTF-16LE', 'UTF-8')), 2),
         ];
     }
 }

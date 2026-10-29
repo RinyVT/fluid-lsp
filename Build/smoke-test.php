@@ -16,7 +16,21 @@ $process = proc_open(
 
 $nextId = 1;
 $diagnostics = [];
-$send = static function (string $method, array $params, bool $isRequest = true) use ($stdin, $stdout, &$nextId, &$diagnostics): mixed {
+$read = static function () use ($stdout, &$diagnostics): array {
+    $length = 0;
+    while (($line = fgets($stdout)) !== false && trim($line) !== '') {
+        if (preg_match('/^Content-Length: (\d+)/', $line, $matches) === 1) {
+            $length = (int)$matches[1];
+        }
+    }
+    $message = json_decode(stream_get_contents($stdout, $length), true, 512, JSON_THROW_ON_ERROR);
+    if (($message['method'] ?? '') === 'textDocument/publishDiagnostics') {
+        $diagnostics = $message['params']['diagnostics'];
+    }
+
+    return $message;
+};
+$send = static function (string $method, array $params, bool $isRequest = true) use ($stdin, $read, &$nextId): mixed {
     $message = ['jsonrpc' => '2.0', 'method' => $method, 'params' => $params];
     if ($isRequest) {
         $message['id'] = $nextId++;
@@ -24,19 +38,16 @@ $send = static function (string $method, array $params, bool $isRequest = true) 
     $body = json_encode($message, JSON_THROW_ON_ERROR);
     fwrite($stdin, 'Content-Length: ' . strlen($body) . "\r\n\r\n" . $body);
     if (!$isRequest) {
+        // Diagnostics come once the server is idle, so wait for them before the next request.
+        if (in_array($method, ['textDocument/didOpen', 'textDocument/didChange'], true)) {
+            while (($read()['method'] ?? '') !== 'textDocument/publishDiagnostics') {
+            }
+        }
+
         return null;
     }
     do {
-        $length = 0;
-        while (($line = fgets($stdout)) !== false && trim($line) !== '') {
-            if (preg_match('/^Content-Length: (\d+)/', $line, $matches) === 1) {
-                $length = (int)$matches[1];
-            }
-        }
-        $response = json_decode(stream_get_contents($stdout, $length), true, 512, JSON_THROW_ON_ERROR);
-        if (($response['method'] ?? '') === 'textDocument/publishDiagnostics') {
-            $diagnostics = $response['params']['diagnostics'];
-        }
+        $response = $read();
     } while (!isset($response['id']));
     if (isset($response['error'])) {
         throw new RuntimeException($method . ': ' . $response['error']['message']);
@@ -96,7 +107,6 @@ $messages = array_column($diagnostics, 'message');
 $check('diagnostics', $messages === ['Unknown ViewHelper "f:nope".'] && $diagnostics[0]['range']['start'] === ['line' => 5, 'character' => 49], $diagnostics);
 
 $send('textDocument/didOpen', ['textDocument' => ['uri' => 'file:///tmp/Broken.fluid.html', 'languageId' => 'fluid', 'version' => 1, 'text' => "<f:if condition=\"1\">\n  </f:for>"]], false);
-$send('textDocument/hover', $at(0, 0));
 $check('parser diagnostics', str_starts_with($diagnostics[0]['message'] ?? '', 'Templating tags not properly nested') && $diagnostics[0]['range']['start'] === ['line' => 1, 'character' => 2], $diagnostics);
 
 $pagePath = realpath(__DIR__ . '/../Tests/Fixtures/my_ext/Resources/Private/Templates/Page.html');

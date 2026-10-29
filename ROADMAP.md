@@ -49,8 +49,6 @@ The proposal also lists:
   - It looks back 4000 bytes at most.
   - Inline arguments break on nested parentheses.
   - `<` and `{` in `<script>` and `<style>` can trigger name completion.
-- **UTF-16 clients:** positions count code points, not UTF-16 units, so they drift by one per emoji. Neovim
-  negotiates UTF-8 and isn't affected.
 - **Document sync:** full text on every change. Incremental sync only matters for very large templates.
 
 ## Housekeeping
