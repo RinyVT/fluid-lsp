@@ -16,22 +16,6 @@ use SplFileInfo;
 final class TemplateFiles
 {
     /**
-     * @return array<string, string> name => path, for `<f:render partial="…">`
-     */
-    public static function partialsFor(string $templatePath): array
-    {
-        return self::in($templatePath, 'Partials');
-    }
-
-    /**
-     * @return array<string, string> name => path, for `<f:layout name="…">`
-     */
-    public static function layoutsFor(string $templatePath): array
-    {
-        return self::in($templatePath, 'Layouts');
-    }
-
-    /**
      * The directory holding `Resources/Private`.
      */
     public static function extensionDirectoryOf(string $templatePath): ?string
@@ -52,9 +36,10 @@ final class TemplateFiles
     }
 
     /**
-     * @return array<string, string>
+     * @param string $type `Partials` for `<f:render partial="…">`, `Layouts` for `<f:layout name="…">`
+     * @return array<string, string> name => path
      */
-    private static function in(string $templatePath, string $type): array
+    public static function in(string $templatePath, string $type): array
     {
         $extensionDirectory = self::extensionDirectoryOf($templatePath);
         $directory = $extensionDirectory . '/Resources/Private/' . $type;

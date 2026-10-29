@@ -26,8 +26,10 @@ final class TemplateChecker
     {
         $namespaces = $this->registry->namespacesFor($template);
         $viewHelpers = $this->registry->all($namespaces);
-        // Fluid leaves CDATA alone. Blanking it keeps the offsets intact.
-        $text = (string)preg_replace_callback('/<!\[CDATA\[.*?]]>/s', static fn (array $match): string => str_repeat(' ', strlen($match[0])), $template);
+        // Fluid leaves CDATA alone, and Fluid 4+ skips f:comment. Blanking them keeps the offsets intact.
+        $text = (string)preg_replace_callback('/<!\[CDATA\[.*?]]>|<f:comment>.*?<\/f:comment>/s', static fn (array $match): string => str_repeat(' ', strlen($match[0])), $template);
+        // Unregistered prefixes are plain XML; resolver delegates (components) are registered as class names.
+        $isChecked = array_map(static fn (array $phpNamespaces): bool => $phpNamespaces !== [] && array_filter($phpNamespaces, 'class_exists') === [], $namespaces);
 
         $problems = [];
         preg_match_all('/<(\w+:[\w.]+)|(?<![\w:.-])(\w+:[\w.]+)\(/', $text, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
@@ -35,9 +37,7 @@ final class TemplateChecker
             $isTag = !isset($match[2]);
             [$name, $start] = $isTag ? $match[1] : $match[2];
             $end = $start + strlen($name);
-            $phpNamespaces = $namespaces[strstr($name, ':', true)] ?? [];
-            // Unregistered prefixes are plain XML; resolver delegates (components) are registered as class names.
-            if ($phpNamespaces === [] || array_filter($phpNamespaces, 'class_exists') !== []) {
+            if (!($isChecked[strstr($name, ':', true)] ?? false)) {
                 continue;
             }
 

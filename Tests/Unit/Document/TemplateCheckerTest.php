@@ -34,6 +34,7 @@ final class TemplateCheckerTest extends TestCase
         yield 'tag value holding `>`' => ['<f:if condition="{x -> f:count()}" then="a" else="b" />', []];
         yield 'unregistered prefix' => ['<svg:path d="x" />{x:y(z: 1)}', []];
         yield 'CDATA' => ['<![CDATA[<f:nope />]]>', []];
+        yield 'f:comment' => ["<f:comment>\n<f:nope bogus=\"1\" />{f:nope2(x: 1)}<f:for as=\"x\">\n</f:comment><f:nope />", [['f:nope', 'Unknown ViewHelper "f:nope".']]];
     }
 
     /**

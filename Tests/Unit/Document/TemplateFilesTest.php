@@ -15,18 +15,18 @@ final class TemplateFilesTest extends TestCase
     {
         self::assertSame(
             ['Card' => self::PRIVATE . '/Partials/Card.html', 'Form/Field' => self::PRIVATE . '/Partials/Form/Field.fluid.html'],
-            TemplateFiles::partialsFor(self::PRIVATE . '/Templates/Page.html'),
+            TemplateFiles::in(self::PRIVATE . '/Templates/Page.html', 'Partials'),
         );
     }
 
     public function testFindsLayouts(): void
     {
-        self::assertSame(['Default' => self::PRIVATE . '/Layouts/Default.html'], TemplateFiles::layoutsFor(self::PRIVATE . '/Templates/Page.html'));
+        self::assertSame(['Default' => self::PRIVATE . '/Layouts/Default.html'], TemplateFiles::in(self::PRIVATE . '/Templates/Page.html', 'Layouts'));
     }
 
     public function testFindsNothingOutsideAnExtension(): void
     {
-        self::assertSame([], TemplateFiles::partialsFor('/tmp/Page.html'));
+        self::assertSame([], TemplateFiles::in('/tmp/Page.html', 'Partials'));
     }
 
     public function testFindsSections(): void

@@ -371,7 +371,7 @@ final class LanguageServer
         if ($context->viewHelper === 'f:render' && $context->argument === 'section') {
             $partial = $context->argumentValues['partial'] ?? null;
             if ($partial !== null) {
-                $file = TemplateFiles::partialsFor($path)[$partial] ?? null;
+                $file = TemplateFiles::in($path, 'Partials')[$partial] ?? null;
                 if ($file === null) {
                     return [];
                 }
@@ -383,8 +383,8 @@ final class LanguageServer
         }
 
         $files = match ($context->viewHelper . ' ' . $context->argument) {
-            'f:render partial' => TemplateFiles::partialsFor($path),
-            'f:layout name' => TemplateFiles::layoutsFor($path),
+            'f:render partial' => TemplateFiles::in($path, 'Partials'),
+            'f:layout name' => TemplateFiles::in($path, 'Layouts'),
             default => [],
         };
 

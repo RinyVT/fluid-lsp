@@ -6,6 +6,6 @@ namespace RinyVT\FluidLsp\Exception;
 
 use LogicException;
 
-final class MethodNotFound extends LogicException implements FluidLspException
+final class MethodNotFound extends LogicException
 {
 }
