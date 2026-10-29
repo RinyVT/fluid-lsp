@@ -2,6 +2,14 @@
 
 Language server for TYPO3 Fluid templates. Supports TYPO3 12.4, 13.4 and 14.
 
+> [!WARNING]
+> **This project is entirely AI-generated.** All code, tests and documentation were written by an AI model
+> (Claude). It was built for my own personal use and is published as-is.
+>
+> - No guarantee of future development, maintenance, bug fixes or support.
+> - Issues and pull requests may go unanswered.
+> - Use at your own risk. If you rely on it, fork it.
+
 - Completion: ViewHelper names (tag and inline syntax) and their arguments; partial, section and layout names in
   `f:render` and `f:layout`; translation keys in `f:translate` and `LLL:` references
 - Hover: ViewHelper and argument documentation; the label of a translation key
@@ -25,7 +33,7 @@ Deprecations are muted: host PHP is often newer than the project's.
 ## Neovim
 
 ```lua
-local bin = vim.fn.expand("~/Development/fluid-lsp/bin/fluid-lsp")
+local bin = "/path/to/fluid-lsp/bin/fluid-lsp"
 
 vim.lsp.config("fluid_lsp", {
   filetypes = { "fluid" },

@@ -2,7 +2,7 @@
     "name": "rinyvt/fluid-lsp",
     "description": "Language server for TYPO3 Fluid templates",
     "type": "project",
-    "license": "GPL-2.0-or-later",
+    "license": "MIT",
     "require": {
         "php": "^8.1"
     },
